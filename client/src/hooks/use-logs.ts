@@ -2,8 +2,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type CreateLogRequest } from "@shared/routes";
 import { type FoodLog, type BoxDefinition } from "@shared/schema";
 
-// Helper to format date as YYYY-MM-DD for API
-const formatDate = (date: Date) => date.toISOString().split('T')[0];
+// Helper to format date as YYYY-MM-DD using LOCAL time (not UTC)
+// toISOString() returns UTC, which differs from local date at night in UTC- timezones,
+// causing the query cache key to mismatch Dashboard's dateStr → invalidation never triggers.
+const formatDate = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 
 export function useLogs(date: Date) {
   const dateStr = formatDate(date);

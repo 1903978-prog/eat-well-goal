@@ -60,7 +60,7 @@ export default function Dashboard() {
   const { data: customLogs } = useQuery<CustomFoodLog[]>({
     queryKey: ['/api/custom-logs', dateStr],
     queryFn: async () => {
-      const res = await fetch(`/api/custom-logs?date=${dateStr}`);
+      const res = await fetch(`/api/custom-logs?date=${dateStr}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
