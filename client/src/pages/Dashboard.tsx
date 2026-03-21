@@ -226,7 +226,7 @@ export default function Dashboard() {
       totalGL += cl.gl;
     });
     const alerts: Record<number, boolean> = {};
-    for (let id = 1; id <= 17; id++) {
+    for (let id = 1; id <= 18; id++) {
       alerts[id] = totalCal > (CAL_THRESHOLD[id] ?? Infinity) || totalGL > (GL_THRESHOLD[id] ?? Infinity);
     }
     return alerts;

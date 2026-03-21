@@ -164,7 +164,8 @@ export const BOX_DATA: Record<number, BoxDefinition> = {
   14: createBox(14, "Protein Powder", 'buttons', { calories: 380, protein: 80, fiber: 3, fat: 0, gl: 0 }, 10, []),
   15: createBox(15, "Berries", 'buttons', { calories: 50, protein: 1, fiber: 6.5, fat: 1, gl: 1 }, 10, ["raspberries", "blackberries", "strawberries (average)"]),
   16: createBox(16, "Boiled Potatoes", 'buttons', { calories: 87, protein: 2, fiber: 2, fat: 0, gl: 14 }, 50, ["boiled potatoes (plain)"]),
-  17: createBox(17, "Greek Y", 'buttons', { calories: 59, protein: 10, fiber: 0, fat: 0, gl: 1 }, 50, ["Greek yogurt (plain, low-fat)"])
+  17: createBox(17, "Greek Y", 'buttons', { calories: 59, protein: 10, fiber: 0, fat: 0, gl: 1 }, 50, ["Greek yogurt (plain, low-fat)"]),
+  18: createBox(18, "Oats", 'buttons', { calories: 389, protein: 17, fiber: 10, fat: 7, gl: 32 }, 40, ["rolled oats", "oat porridge", "overnight oats", "oat bran"])
 };
 
-export const SIDEBAR_ORDER = [17, 10, 11, 12, 13, 14, 15, 16];
+export const SIDEBAR_ORDER = [17, 18, 10, 11, 12, 13, 14, 15, 16];
