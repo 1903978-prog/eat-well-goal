@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { format, addDays, subDays } from "date-fns";
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RotateCcw, Trash2, Calendar as CalendarIcon, Loader2, Save, BarChart3, UtensilsCrossed, X, Trophy } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RotateCcw, Trash2, Calendar as CalendarIcon, Loader2, Save, BarChart3, UtensilsCrossed, X, Trophy, ChefHat } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 
@@ -396,6 +396,11 @@ export default function Dashboard() {
             <Link href="/progress">
               <Button variant="outline" size="icon" title="Progress" data-testid="button-progress">
                 <BarChart3 className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+            <Link href="/menus">
+              <Button variant="outline" size="icon" title="Menus" data-testid="button-menus">
+                <ChefHat className="h-3.5 w-3.5" />
               </Button>
             </Link>
           </div>

@@ -35,10 +35,10 @@ export const customFoodLogs = pgTable("custom_food_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertFoodLogSchema = createInsertSchema(foodLogs).omit({ 
-  id: true, 
+export const insertFoodLogSchema = createInsertSchema(foodLogs).omit({
+  id: true,
   createdAt: true,
-  date: true 
+  date: true
 });
 
 export const insertCustomFoodLogSchema = createInsertSchema(customFoodLogs).omit({
@@ -169,3 +169,22 @@ export const BOX_DATA: Record<number, BoxDefinition> = {
 };
 
 export const SIDEBAR_ORDER = [17, 18, 10, 11, 12, 13, 14, 15, 16];
+
+export const menuIngredients = pgTable("menu_ingredients", {
+  id: serial("id").primaryKey(),
+  meal: text("meal").notNull(), // breakfast, lunch, dinner
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const mealCriteria = pgTable("meal_criteria", {
+  meal: text("meal").primaryKey(),
+  calories: integer("calories").notNull().default(500),
+  protein: integer("protein").notNull().default(30),
+  fiber: integer("fiber").notNull().default(8),
+  fat: integer("fat").notNull().default(20),
+  gl: integer("gl").notNull().default(20),
+});
+
+export type MenuIngredient = typeof menuIngredients.$inferSelect;
+export type MealCriteria = typeof mealCriteria.$inferSelect;

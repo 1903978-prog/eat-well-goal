@@ -1,5 +1,5 @@
 
-import { foodLogs, dailyRecords, customFoodLogs, type FoodLog, type DailyRecord, type CustomFoodLog, BOX_DATA, calculateHero13 } from "@shared/schema";
+import { foodLogs, dailyRecords, customFoodLogs, menuIngredients, mealCriteria, type FoodLog, type DailyRecord, type CustomFoodLog, type MenuIngredient, type MealCriteria, BOX_DATA, calculateHero13 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, between } from "drizzle-orm";
 
@@ -18,6 +18,11 @@ export interface IStorage {
   createCustomLog(data: { foodName: string; grams: number; calories: number; protein: number; fiber: number; fat: number; gl: number; meal: string; date: string }): Promise<CustomFoodLog>;
   deleteCustomLog(id: number): Promise<void>;
   resetCustomLogs(date: string): Promise<void>;
+  getMenuIngredients(meal: string): Promise<MenuIngredient[]>;
+  addMenuIngredient(meal: string, name: string): Promise<MenuIngredient>;
+  deleteMenuIngredient(id: number): Promise<void>;
+  getMealCriteria(meal: string): Promise<MealCriteria | undefined>;
+  upsertMealCriteria(meal: string, data: { calories: number; protein: number; fiber: number; fat: number; gl: number }): Promise<MealCriteria>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -50,7 +55,7 @@ export class DatabaseStorage implements IStorage {
   async saveDay(date: string, logs: any[], weightG: number | null, activeMeal: string, points: number = 0): Promise<void> {
     await db.transaction(async (tx) => {
       await tx.delete(foodLogs).where(eq(foodLogs.date, date));
-      
+
       if (logs.length > 0) {
         await tx.insert(foodLogs).values(logs.map(l => ({
           ...l,
@@ -150,6 +155,31 @@ export class DatabaseStorage implements IStorage {
 
   async resetCustomLogs(date: string): Promise<void> {
     await db.delete(customFoodLogs).where(eq(customFoodLogs.date, date));
+  }
+
+  async getMenuIngredients(meal: string): Promise<MenuIngredient[]> {
+    return await db.select().from(menuIngredients).where(eq(menuIngredients.meal, meal)).orderBy(menuIngredients.createdAt);
+  }
+
+  async addMenuIngredient(meal: string, name: string): Promise<MenuIngredient> {
+    const [ing] = await db.insert(menuIngredients).values({ meal, name }).returning();
+    return ing;
+  }
+
+  async deleteMenuIngredient(id: number): Promise<void> {
+    await db.delete(menuIngredients).where(eq(menuIngredients.id, id));
+  }
+
+  async getMealCriteria(meal: string): Promise<MealCriteria | undefined> {
+    const [row] = await db.select().from(mealCriteria).where(eq(mealCriteria.meal, meal));
+    return row;
+  }
+
+  async upsertMealCriteria(meal: string, data: { calories: number; protein: number; fiber: number; fat: number; gl: number }): Promise<MealCriteria> {
+    const [row] = await db.insert(mealCriteria).values({ meal, ...data })
+      .onConflictDoUpdate({ target: mealCriteria.meal, set: data })
+      .returning();
+    return row;
   }
 }
 
