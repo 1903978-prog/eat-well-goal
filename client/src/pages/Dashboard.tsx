@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect } from "react";
 import { format, addDays, subDays } from "date-fns";
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RotateCcw, Trash2, Calendar as CalendarIcon, Loader2, Save, BarChart3, UtensilsCrossed, X, Trophy, ChefHat } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RotateCcw, Trash2, Calendar as CalendarIcon, Loader2, Save, BarChart3, UtensilsCrossed, X, Trophy, ChefHat, Settings } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 
 import Big from "big.js";
-import { BOX_DATA, MEAL_TARGETS, CAL_THRESHOLD, GL_THRESHOLD, SIDEBAR_ORDER, calculateHero13, type MealType, type CustomFoodLog } from "@shared/schema";
+import { MEAL_TARGETS, CAL_THRESHOLD, GL_THRESHOLD, SIDEBAR_ORDER, calculateHero13, type MealType, type CustomFoodLog } from "@shared/schema";
+import { useBoxData } from "@/hooks/use-box-data";
 import { useLogs, useCreateLog, useResetDay, useDeleteLog } from "@/hooks/use-logs";
 import { BoxButton } from "@/components/BoxButton";
 import { TotalsPanel } from "@/components/TotalsPanel";
@@ -55,6 +56,7 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [customFoodsOpen, setCustomFoodsOpen] = useState(false);
   const queryClient = useQueryClient();
+  const boxData = useBoxData();
   const { data: logs, isLoading, error } = useLogs(date);
   const dateStr = format(date, 'yyyy-MM-dd');
   const { data: customLogs } = useQuery<CustomFoodLog[]>({
@@ -116,7 +118,7 @@ export default function Dashboard() {
   };
 
   const handleLog = (boxId: number) => {
-    const box = BOX_DATA[boxId];
+    const box = boxData[boxId];
     if (!box) return;
     createLog.mutate(
       { boxId, grams: box.increment, meal: activeMeal, date: dateStr },
@@ -215,7 +217,7 @@ export default function Dashboard() {
     let totalCal = 0;
     let totalGL = 0;
     for (const log of logs) {
-      const box = BOX_DATA[log.boxId];
+      const box = boxData[log.boxId];
       if (!box) continue;
       const f = log.grams / 100;
       totalCal += box.macros.calories * f;
@@ -226,16 +228,17 @@ export default function Dashboard() {
       totalGL += cl.gl;
     });
     const alerts: Record<number, boolean> = {};
-    for (let id = 1; id <= 18; id++) {
+    for (const idStr of Object.keys(boxData)) {
+      const id = Number(idStr);
       alerts[id] = totalCal > (CAL_THRESHOLD[id] ?? Infinity) || totalGL > (GL_THRESHOLD[id] ?? Infinity);
     }
     return alerts;
-  }, [logs, customLogs]);
+  }, [logs, customLogs, boxData]);
 
   const dailyTotalsForPoints = useMemo(() => {
     let totalCal = 0, totalP = 0, totalF = 0, totalFat = 0, totalGl = 0, totalW = 0;
     (logs || []).forEach(log => {
-      const box = BOX_DATA[log.boxId];
+      const box = boxData[log.boxId];
       if (!box) return;
       const f = log.grams / 100;
       totalCal += box.macros.calories * f;
@@ -255,7 +258,7 @@ export default function Dashboard() {
     });
     const hero13 = (totalCal > 0 && totalW > 0) ? calculateHero13(totalP, totalF, totalFat, totalCal, totalGl, totalW) : 0;
     return { calories: totalCal, hero13 };
-  }, [logs, customLogs]);
+  }, [logs, customLogs, boxData]);
 
   const currentPoints = useMemo(() => {
     const prevPts = prevPointsData?.points ?? 0;
@@ -275,7 +278,7 @@ export default function Dashboard() {
   const mealTotals = useMemo(() => {
     const sum = { calories: Big(0), protein: Big(0), fiber: Big(0), weight: Big(0) };
     activeMealLogs.forEach(log => {
-      const box = BOX_DATA[log.boxId];
+      const box = boxData[log.boxId];
       if (!box) return;
       const f = Big(log.grams).div(100);
       sum.weight = sum.weight.plus(Big(log.grams));
@@ -295,11 +298,17 @@ export default function Dashboard() {
       fiber: sum.fiber.round(1).toNumber(),
       weight: sum.weight.round(0).toNumber(),
     };
-  }, [activeMealLogs, activeMealCustomLogs]);
+  }, [activeMealLogs, activeMealCustomLogs, boxData]);
 
-  const gridBoxIds = [7, 8, 9, 4, 5, 6, 1, 2, 3];
-  const gridBoxes = gridBoxIds.map(id => BOX_DATA[id]);
-  const sidebarBoxes = SIDEBAR_ORDER.map(id => BOX_DATA[id]);
+  const GRID_BOX_IDS = [7, 8, 9, 4, 5, 6, 1, 2, 3];
+  const gridBoxes = [
+    ...GRID_BOX_IDS.map(id => boxData[id]).filter((b): b is NonNullable<typeof b> => !!b && !b.hidden),
+    ...Object.values(boxData).filter(b => b.isCustom && b.group === 'matrix' && !b.hidden),
+  ];
+  const sidebarBoxes = [
+    ...SIDEBAR_ORDER.map(id => boxData[id]).filter((b): b is NonNullable<typeof b> => !!b && !b.hidden),
+    ...Object.values(boxData).filter(b => b.isCustom && b.group === 'buttons' && !b.hidden),
+  ];
   const targets = viewMode === "fullday"
     ? MEALS.reduce((sum, m) => ({
         calories: sum.calories + MEAL_TARGETS[m].calories,
@@ -401,6 +410,11 @@ export default function Dashboard() {
             <Link href="/menus">
               <Button variant="outline" size="icon" title="Menus" data-testid="button-menus">
                 <ChefHat className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+            <Link href="/admin">
+              <Button variant="outline" size="icon" title="Admin" data-testid="button-admin">
+                <Settings className="h-3.5 w-3.5" />
               </Button>
             </Link>
           </div>

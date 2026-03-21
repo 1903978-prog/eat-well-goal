@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { setupAuth, requireAuth } from "./auth";
+import { runMigrations } from "./migrate";
 import { createServer } from "http";
 
 const app = express();
@@ -71,6 +72,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await runMigrations();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

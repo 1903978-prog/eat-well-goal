@@ -8,6 +8,7 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
 import Progress from "@/pages/Progress";
 import Menus from "@/pages/Menus";
+import Admin from "@/pages/Admin";
 import Login from "@/pages/login";
 
 function Router() {
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/progress" component={Progress} />
       <Route path="/menus" component={Menus} />
+      <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>
   );

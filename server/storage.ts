@@ -1,5 +1,5 @@
 
-import { foodLogs, dailyRecords, customFoodLogs, menuIngredients, mealCriteria, type FoodLog, type DailyRecord, type CustomFoodLog, type MenuIngredient, type MealCriteria, BOX_DATA, calculateHero13 } from "@shared/schema";
+import { foodLogs, dailyRecords, customFoodLogs, menuIngredients, mealCriteria, boxCustomizations, type FoodLog, type DailyRecord, type CustomFoodLog, type MenuIngredient, type MealCriteria, type BoxCustomization, BOX_DATA, calculateHero13 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, between } from "drizzle-orm";
 
@@ -23,6 +23,10 @@ export interface IStorage {
   deleteMenuIngredient(id: number): Promise<void>;
   getMealCriteria(meal: string): Promise<MealCriteria | undefined>;
   upsertMealCriteria(meal: string, data: { calories: number; protein: number; fiber: number; fat: number; gl: number }): Promise<MealCriteria>;
+  getBoxCustomizations(): Promise<BoxCustomization[]>;
+  getBoxCustomization(boxId: number): Promise<BoxCustomization | undefined>;
+  upsertBoxCustomization(data: Partial<BoxCustomization> & { boxId: number }): Promise<BoxCustomization>;
+  deleteBoxCustomization(boxId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -180,6 +184,28 @@ export class DatabaseStorage implements IStorage {
       .onConflictDoUpdate({ target: mealCriteria.meal, set: data })
       .returning();
     return row;
+  }
+
+  async getBoxCustomizations(): Promise<BoxCustomization[]> {
+    return await db.select().from(boxCustomizations);
+  }
+
+  async getBoxCustomization(boxId: number): Promise<BoxCustomization | undefined> {
+    const [row] = await db.select().from(boxCustomizations).where(eq(boxCustomizations.boxId, boxId));
+    return row;
+  }
+
+  async upsertBoxCustomization(data: Partial<BoxCustomization> & { boxId: number }): Promise<BoxCustomization> {
+    const { boxId, ...rest } = data;
+    const [row] = await db.insert(boxCustomizations)
+      .values({ boxId, ...rest } as any)
+      .onConflictDoUpdate({ target: boxCustomizations.boxId, set: rest as any })
+      .returning();
+    return row;
+  }
+
+  async deleteBoxCustomization(boxId: number): Promise<void> {
+    await db.delete(boxCustomizations).where(eq(boxCustomizations.boxId, boxId));
   }
 }
 

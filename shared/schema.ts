@@ -188,3 +188,22 @@ export const mealCriteria = pgTable("meal_criteria", {
 
 export type MenuIngredient = typeof menuIngredients.$inferSelect;
 export type MealCriteria = typeof mealCriteria.$inferSelect;
+
+export const boxCustomizations = pgTable("box_customizations", {
+  id: serial("id").primaryKey(),
+  boxId: integer("box_id").notNull().unique(),
+  name: text("name"),
+  calories: integer("calories"),
+  protein: integer("protein"),
+  fiber: integer("fiber"),
+  fat: integer("fat"),
+  gl: integer("gl"),
+  increment: integer("increment"),
+  examples: text("examples"), // JSON string array
+  group: text("group"),       // 'matrix' | 'buttons'
+  hidden: integer("hidden").notNull().default(0),   // 0 = visible, 1 = hidden
+  isCustom: integer("is_custom").notNull().default(0), // 1 = user-created box
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type BoxCustomization = typeof boxCustomizations.$inferSelect;

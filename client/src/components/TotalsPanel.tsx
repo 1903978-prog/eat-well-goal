@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import Big from "big.js";
-import { type FoodLog, type CustomFoodLog, type MealType, BOX_DATA, MEAL_TARGETS, calculateHero13, calculateSatietyScore } from "@shared/schema";
+import { type FoodLog, type CustomFoodLog, type MealType, MEAL_TARGETS, calculateHero13, calculateSatietyScore } from "@shared/schema";
+import { useBoxData } from "@/hooks/use-box-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -22,7 +23,7 @@ interface MacroTotal {
   weight: Big;
 }
 
-function computeTotals(logsList: FoodLog[]) {
+function computeTotals(logsList: FoodLog[], boxData: ReturnType<typeof useBoxData>) {
   const sum: MacroTotal = {
     calories: Big(0),
     protein: Big(0),
@@ -33,7 +34,7 @@ function computeTotals(logsList: FoodLog[]) {
   };
 
   logsList.forEach(log => {
-    const box = BOX_DATA[log.boxId];
+    const box = boxData[log.boxId];
     if (!box) return;
     const factor = Big(log.grams).div(100);
     sum.weight = sum.weight.plus(Big(log.grams));
@@ -71,8 +72,9 @@ function computeTotals(logsList: FoodLog[]) {
 }
 
 export function TotalsPanel({ logs, activeMeal, mealLogs, customLogs = [] }: TotalsPanelProps) {
+  const boxData = useBoxData();
   const dayTotals = useMemo(() => {
-    const boxTotals = computeTotals(logs);
+    const boxTotals = computeTotals(logs, boxData);
     customLogs.forEach(cl => {
       boxTotals.calories += cl.calories;
       boxTotals.protein += cl.protein;
@@ -86,7 +88,7 @@ export function TotalsPanel({ logs, activeMeal, mealLogs, customLogs = [] }: Tot
     boxTotals.hero13 = (c > 0 && w > 0) ? calculateHero13(boxTotals.protein, boxTotals.fiber, boxTotals.fat, c, boxTotals.gl, w) : null;
     boxTotals.satiety = (c > 0 && w > 0) ? calculateSatietyScore(c, w, boxTotals.protein, boxTotals.fiber) : null;
     return boxTotals;
-  }, [logs, customLogs]);
+  }, [logs, customLogs, boxData]);
 
   return (
     <Card className="h-full border-none shadow-none bg-transparent">
