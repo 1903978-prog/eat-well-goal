@@ -391,7 +391,7 @@ export async function registerRoutes(
       apple: 'mela', pear: 'pera', strawberry: 'fragola', banana: 'banana', orange: 'arancia',
       shrimp: 'gamberi', lamb: 'agnello', turkey: 'tacchino', ham: 'prosciutto', bacon: 'pancetta',
       pepper: 'pepe', basil: 'basilico', parsley: 'prezzemolo', rosemary: 'rosmarino',
-      greek yogurt: 'yogurt greco', yogurt: 'yogurt', quinoa: 'quinoa', lentils: 'lenticchie',
+      'greek yogurt': 'yogurt greco', yogurt: 'yogurt', quinoa: 'quinoa', lentils: 'lenticchie',
       beans: 'fagioli', chickpeas: 'ceci', eggplant: 'melanzane', celery: 'sedano',
     };
     const toItalian = (name: string) => EN_IT[name.toLowerCase()] || name;
