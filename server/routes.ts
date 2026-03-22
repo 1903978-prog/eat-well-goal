@@ -325,16 +325,28 @@ export async function registerRoutes(
       let rawRecipes: any[] = [];
 
       if (source !== "all" && SITE_LABELS[source]) {
-        // Use complexSearch with site name in query for source-specific search
-        const siteQuery = SITE_LABELS[source] + " italian " + ingredients.map(i => i.name).join(' ');
-        const complexUrl = `https://api.spoonacular.com/recipes/complexSearch?apiKey=${apiKey}&query=${encodeURIComponent(siteQuery)}&includeIngredients=${encodeURIComponent(ingredientList)}&cuisine=italian&number=12&addRecipeInformation=true&addRecipeNutrition=true`;
+        // Use complexSearch: site name as query bias, top 3 ingredients to keep it broad
+        const topIngredients = ingredients.slice(0, 3).map(i => i.name).join(',');
+        const siteQuery = SITE_LABELS[source] + " italian recipe";
+        const complexUrl = `https://api.spoonacular.com/recipes/complexSearch?apiKey=${apiKey}&query=${encodeURIComponent(siteQuery)}&includeIngredients=${encodeURIComponent(topIngredients)}&number=12&addRecipeInformation=true&addRecipeNutrition=true`;
         const complexRes = await fetch(complexUrl);
         if (!complexRes.ok) {
           const err = await complexRes.text();
           return res.status(502).json({ message: `Spoonacular error (${complexRes.status}): ${err}` });
         }
         const complexData: any = await complexRes.json();
-        const items: any[] = complexData.results || [];
+        let items: any[] = complexData.results || [];
+
+        // If site-specific search returned nothing, fall back to a generic italian search
+        if (!items.length) {
+          const fallbackUrl = `https://api.spoonacular.com/recipes/complexSearch?apiKey=${apiKey}&query=${encodeURIComponent("italian recipe")}&includeIngredients=${encodeURIComponent(topIngredients)}&number=12&addRecipeInformation=true&addRecipeNutrition=true`;
+          const fallbackRes = await fetch(fallbackUrl);
+          if (fallbackRes.ok) {
+            const fallbackData: any = await fallbackRes.json();
+            items = fallbackData.results || [];
+          }
+        }
+
         if (!items.length) return res.json({ results: [], criteria: crit });
 
         let results = items.map((info: any) => {
