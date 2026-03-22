@@ -378,23 +378,42 @@ export async function registerRoutes(
     const criteria = await storage.getMealCriteria(meal);
     const crit = criteria || { calories: 500, protein: 30, fiber: 8, fat: 20, gl: 20 };
     const ingredientNames = ingredients.map(i => i.name.toLowerCase());
-    const query = ingredients.map(i => i.name).join(' ');
+
+    // Translate English ingredient names to Italian for searching on Italian sites
+    const EN_IT: Record<string, string> = {
+      salmon: 'salmone', oat: 'avena', oats: 'avena', milk: 'latte', egg: 'uovo', eggs: 'uova',
+      carrot: 'carota', carrots: 'carote', linguine: 'linguine', pasta: 'pasta', rice: 'riso',
+      chicken: 'pollo', beef: 'manzo', pork: 'maiale', fish: 'pesce', tuna: 'tonno', cod: 'merluzzo',
+      tomato: 'pomodoro', tomatoes: 'pomodori', onion: 'cipolla', garlic: 'aglio', potato: 'patata',
+      potatoes: 'patate', zucchini: 'zucchine', spinach: 'spinaci', broccoli: 'broccoli',
+      mushroom: 'funghi', mushrooms: 'funghi', cheese: 'formaggio', butter: 'burro', cream: 'panna',
+      bread: 'pane', flour: 'farina', sugar: 'zucchero', oil: 'olio', lemon: 'limone',
+      apple: 'mela', pear: 'pera', strawberry: 'fragola', banana: 'banana', orange: 'arancia',
+      shrimp: 'gamberi', lamb: 'agnello', turkey: 'tacchino', ham: 'prosciutto', bacon: 'pancetta',
+      pepper: 'pepe', basil: 'basilico', parsley: 'prezzemolo', rosemary: 'rosmarino',
+      greek yogurt: 'yogurt greco', yogurt: 'yogurt', quinoa: 'quinoa', lentils: 'lenticchie',
+      beans: 'fagioli', chickpeas: 'ceci', eggplant: 'melanzane', celery: 'sedano',
+    };
+    const toItalian = (name: string) => EN_IT[name.toLowerCase()] || name;
+    const italianQuery = ingredients.map(i => toItalian(i.name)).join(' ');
+    // Also keep Italian names for title-matching
+    const italianNames = ingredientNames.map(n => EN_IT[n] || n);
+    const allMatchTerms = [...ingredientNames, ...italianNames];
 
     try {
       let raw: any[] = [];
 
       if (source === "giallozafferano") {
-        raw = await scrapeGialloZafferano(query);
+        raw = await scrapeGialloZafferano(italianQuery);
       } else if (source === "cucchiaio") {
-        raw = await scrapeCucchiaio(query);
+        raw = await scrapeCucchiaio(italianQuery);
       } else if (source === "lacucinaitaliana") {
-        raw = await scrapeLaCucinaItaliana(query);
+        raw = await scrapeLaCucinaItaliana(italianQuery);
       } else {
-        // All sites: scrape all 3 in parallel
         const [gz, cc, lci] = await Promise.allSettled([
-          scrapeGialloZafferano(query),
-          scrapeCucchiaio(query),
-          scrapeLaCucinaItaliana(query),
+          scrapeGialloZafferano(italianQuery),
+          scrapeCucchiaio(italianQuery),
+          scrapeLaCucinaItaliana(italianQuery),
         ]);
         raw = [
           ...(gz.status === 'fulfilled' ? gz.value : []),
@@ -403,19 +422,17 @@ export async function registerRoutes(
         ];
       }
 
-      // Score each recipe by ingredient coverage in title
+      // Score by ingredient coverage (check both English and Italian terms in title)
       let results = raw.map((r, idx) => {
         const text = r.title.toLowerCase();
-        const used = ingredientNames.filter(ing => text.includes(ing));
-        const coverage = Math.round((used.length / Math.max(ingredientNames.length, 1)) * 100);
-        return { id: `s-${idx}`, ...r, usedIngredientCount: used.length, missedIngredientCount: ingredientNames.length - used.length, coverage, nutrition: null as null };
+        const used = allMatchTerms.filter(t => text.includes(t));
+        const uniqueUsed = ingredientNames.filter(n => text.includes(n) || text.includes(EN_IT[n] || ''));
+        const coverage = Math.round((uniqueUsed.length / Math.max(ingredientNames.length, 1)) * 100);
+        return { id: `s-${idx}`, ...r, usedIngredientCount: uniqueUsed.length, missedIngredientCount: ingredientNames.length - uniqueUsed.length, coverage, nutrition: null as null };
       });
 
-      // Keep only those mentioning at least 1 ingredient, sort by coverage
-      results = results.filter(r => r.usedIngredientCount >= 1);
-      if (!results.length) results = raw.slice(0, 8).map((r, idx) => ({ id: `s-${idx}`, ...r, usedIngredientCount: 0, missedIngredientCount: ingredientNames.length, coverage: 0, nutrition: null as null }));
+      // Show all results (titles are in Italian so English ingredient match may be 0), sort by coverage
       results.sort((a, b) => b.coverage - a.coverage);
-
       res.json({ results: results.slice(0, 10), criteria: crit });
     } catch (err: any) {
       res.status(500).json({ message: `Search failed: ${err.message}` });
