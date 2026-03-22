@@ -313,79 +313,22 @@ export async function registerRoutes(
       return res.status(503).json({ message: "Recipe search is not configured. Please add SPOONACULAR_API_KEY to environment variables." });
     }
 
-    // Site name to add to query when source is selected
-    const SITE_LABELS: Record<string, string> = {
-      giallozafferano: "giallozafferano",
-      cucchiaio: "cucchiaio d'argento",
-      lacucinaitaliana: "la cucina italiana",
-    };
-
     try {
       const ingredientList = ingredients.map(i => i.name).join(',');
-      let rawRecipes: any[] = [];
 
-      if (source !== "all" && SITE_LABELS[source]) {
-        // Use complexSearch: site name as query bias, top 3 ingredients to keep it broad
-        const topIngredients = ingredients.slice(0, 3).map(i => i.name).join(',');
-        const siteQuery = SITE_LABELS[source] + " italian recipe";
-        const complexUrl = `https://api.spoonacular.com/recipes/complexSearch?apiKey=${apiKey}&query=${encodeURIComponent(siteQuery)}&includeIngredients=${encodeURIComponent(topIngredients)}&number=12&addRecipeInformation=true&addRecipeNutrition=true`;
-        const complexRes = await fetch(complexUrl);
-        if (!complexRes.ok) {
-          const err = await complexRes.text();
-          return res.status(502).json({ message: `Spoonacular error (${complexRes.status}): ${err}` });
-        }
-        const complexData: any = await complexRes.json();
-        let items: any[] = complexData.results || [];
-
-        // If site-specific search returned nothing, fall back to a generic italian search
-        if (!items.length) {
-          const fallbackUrl = `https://api.spoonacular.com/recipes/complexSearch?apiKey=${apiKey}&query=${encodeURIComponent("italian recipe")}&includeIngredients=${encodeURIComponent(topIngredients)}&number=12&addRecipeInformation=true&addRecipeNutrition=true`;
-          const fallbackRes = await fetch(fallbackUrl);
-          if (fallbackRes.ok) {
-            const fallbackData: any = await fallbackRes.json();
-            items = fallbackData.results || [];
-          }
-        }
-
-        if (!items.length) return res.json({ results: [], criteria: crit });
-
-        let results = items.map((info: any) => {
-          const nutrients: Record<string, number> = {};
-          (info.nutrition?.nutrients || []).forEach((n: any) => { nutrients[n.name] = n.amount; });
-          const carbs = nutrients['Carbohydrates'] || 0;
-          return {
-            id: info.id,
-            title: info.title,
-            image: info.image || '',
-            sourceUrl: info.sourceUrl || '',
-            sourceName: info.sourceName || '',
-            usedIngredientCount: (info.usedIngredients || []).length,
-            missedIngredientCount: (info.missedIngredients || []).length,
-            nutrition: {
-              calories: Math.round(nutrients['Calories'] || 0),
-              protein: Math.round(nutrients['Protein'] || 0),
-              fat: Math.round(nutrients['Fat'] || 0),
-              fiber: Math.round(nutrients['Fiber'] || 0),
-              carbs: Math.round(carbs),
-              gl: Math.round(carbs * 0.5),
-            },
-          };
-        });
-        if (maxGl !== null) results = results.filter(r => r.nutrition.gl <= maxGl);
-        return res.json({ results, criteria: crit });
-      }
-
-      // Default: findByIngredients + bulk info
-      const searchUrl = `https://api.spoonacular.com/recipes/findByIngredients?apiKey=${apiKey}&ingredients=${encodeURIComponent(ingredientList)}&number=12&ranking=1&ignorePantry=true`;
+      // findByIngredients: returns recipes that use AT LEAST ONE of the listed ingredients
+      // ranking=1 = maximize used ingredients count
+      const searchUrl = `https://api.spoonacular.com/recipes/findByIngredients?apiKey=${apiKey}&ingredients=${encodeURIComponent(ingredientList)}&number=20&ranking=1&ignorePantry=true`;
       const searchRes = await fetch(searchUrl);
       if (!searchRes.ok) {
         const err = await searchRes.text();
         return res.status(502).json({ message: `Spoonacular error (${searchRes.status}): ${err}` });
       }
-      rawRecipes = await searchRes.json();
+      // Only keep recipes that actually use at least one ingredient
+      let rawRecipes: any[] = (await searchRes.json()).filter((r: any) => r.usedIngredientCount >= 1);
       if (!rawRecipes.length) return res.json({ results: [], criteria: crit });
 
-      const recipeIds = rawRecipes.slice(0, 8).map((r: any) => r.id).join(',');
+      const recipeIds = rawRecipes.slice(0, 12).map((r: any) => r.id).join(',');
       const infoUrl = `https://api.spoonacular.com/recipes/informationBulk?apiKey=${apiKey}&ids=${recipeIds}&includeNutrition=true`;
       const infoRes = await fetch(infoUrl);
       if (!infoRes.ok) return res.json({ results: [], criteria: crit });
@@ -414,6 +357,20 @@ export async function registerRoutes(
           },
         };
       });
+
+      // Filter by site if a specific source is selected
+      const SITE_KEYWORDS: Record<string, string> = {
+        giallozafferano: "giallozafferano",
+        cucchiaio: "cucchiaio",
+        lacucinaitaliana: "lacucinaitaliana",
+      };
+      if (source !== "all" && SITE_KEYWORDS[source]) {
+        const keyword = SITE_KEYWORDS[source];
+        const siteFiltered = results.filter(r => r.sourceUrl.toLowerCase().includes(keyword) || r.sourceName.toLowerCase().includes(keyword));
+        // Only apply site filter if it returns results; otherwise show all (site not in Spoonacular DB)
+        if (siteFiltered.length > 0) results = siteFiltered;
+      }
+
       if (maxGl !== null) results = results.filter(r => r.nutrition.gl <= maxGl);
       res.json({ results, criteria: crit });
     } catch (err: any) {
