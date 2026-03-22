@@ -1,7 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
-import { setupAuth, requireAuth } from "./auth";
 import { runMigrations } from "./migrate";
 import { createServer } from "http";
 
@@ -26,15 +25,6 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
-
-// Setup session + auth routes
-setupAuth(app);
-
-// Protect all /api routes (except /api/auth/*)
-app.use((req: Request, res: Response, next: NextFunction) => {
-  if (req.path.startsWith("/api/auth/")) return next();
-  requireAuth(req, res, next);
-});
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
