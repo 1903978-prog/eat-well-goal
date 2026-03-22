@@ -294,7 +294,13 @@ export async function registerRoutes(
     }
   });
 
-  // ─── Recipe Search (Spoonacular) ──────────────────────────────────────────
+  // ─── Recipe Search (Google Custom Search → Italian sites) ─────────────────
+
+  const ITALIAN_SITES: Record<string, string> = {
+    giallozafferano: "giallozafferano.it",
+    cucchiaio: "cucchiaio.it",
+    lacucinaitaliana: "lacucinaitaliana.com",
+  };
 
   app.get('/api/recipes/search', async (req, res) => {
     const meal = req.query.meal as string;
@@ -308,82 +314,57 @@ export async function registerRoutes(
     const criteria = await storage.getMealCriteria(meal);
     const crit = criteria || { calories: 500, protein: 30, fiber: 8, fat: 20, gl: 20 };
 
-    const apiKey = process.env.SPOONACULAR_API_KEY;
-    if (!apiKey) {
-      return res.status(503).json({ message: "Recipe search is not configured. Please add SPOONACULAR_API_KEY to environment variables." });
+    const googleApiKey = process.env.GOOGLE_SEARCH_API_KEY;
+    const googleCseId = process.env.GOOGLE_CSE_ID;
+    if (!googleApiKey || !googleCseId) {
+      return res.status(503).json({ message: "Recipe search not configured. Add GOOGLE_SEARCH_API_KEY and GOOGLE_CSE_ID to environment variables." });
     }
 
     try {
-      const ingredientList = ingredients.map(i => i.name).join(',');
+      const ingredientNames = ingredients.map(i => i.name.toLowerCase());
+      const ingredientQuery = ingredients.map(i => i.name).join(' ');
 
-      // findByIngredients: returns recipes that use AT LEAST ONE of the listed ingredients
-      // ranking=1 = maximize used ingredients count
-      const searchUrl = `https://api.spoonacular.com/recipes/findByIngredients?apiKey=${apiKey}&ingredients=${encodeURIComponent(ingredientList)}&number=20&ranking=1&ignorePantry=true`;
-      const searchRes = await fetch(searchUrl);
-      if (!searchRes.ok) {
-        const err = await searchRes.text();
-        return res.status(502).json({ message: `Spoonacular error (${searchRes.status}): ${err}` });
+      // Build query with site filter
+      let siteFilter = '';
+      if (source !== "all" && ITALIAN_SITES[source]) {
+        siteFilter = `site:${ITALIAN_SITES[source]} `;
+      } else {
+        siteFilter = `(site:giallozafferano.it OR site:cucchiaio.it OR site:lacucinaitaliana.com) `;
       }
-      // Only keep recipes that actually use at least one ingredient
-      let rawRecipes: any[] = (await searchRes.json()).filter((r: any) => r.usedIngredientCount >= 1);
-      if (!rawRecipes.length) return res.json({ results: [], criteria: crit });
+      const query = `${siteFilter}ricetta ${ingredientQuery}`;
 
-      const recipeIds = rawRecipes.slice(0, 12).map((r: any) => r.id).join(',');
-      const infoUrl = `https://api.spoonacular.com/recipes/informationBulk?apiKey=${apiKey}&ids=${recipeIds}&includeNutrition=true`;
-      const infoRes = await fetch(infoUrl);
-      if (!infoRes.ok) return res.json({ results: [], criteria: crit });
+      const googleUrl = `https://www.googleapis.com/customsearch/v1?key=${googleApiKey}&cx=${googleCseId}&q=${encodeURIComponent(query)}&num=10`;
+      const gRes = await fetch(googleUrl);
+      if (!gRes.ok) {
+        const err = await gRes.text();
+        return res.status(502).json({ message: `Google search error (${gRes.status}): ${err}` });
+      }
+      const gData: any = await gRes.json();
+      const items: any[] = gData.items || [];
 
-      const infoList: any[] = await infoRes.json();
-      let results = infoList.map((info: any) => {
-        const raw = rawRecipes.find((r: any) => r.id === info.id) || {};
-        const nutrients: Record<string, number> = {};
-        (info.nutrition?.nutrients || []).forEach((n: any) => { nutrients[n.name] = n.amount; });
-        const carbs = nutrients['Carbohydrates'] || 0;
-
-        // Calculate ingredient weight coverage %
-        const metricGrams = (ing: any) => ing.measures?.metric?.amount ?? ing.amount ?? 0;
-        const usedWeight = (raw.usedIngredients || []).reduce((s: number, i: any) => s + metricGrams(i), 0);
-        const missedWeight = (raw.missedIngredients || []).reduce((s: number, i: any) => s + metricGrams(i), 0);
-        const totalWeight = usedWeight + missedWeight;
-        const coverage = totalWeight > 0 ? Math.round((usedWeight / totalWeight) * 100) : 0;
-
+      // Score by how many user ingredients appear in title + snippet
+      let results = items.map((item: any, idx: number) => {
+        const text = (item.title + ' ' + (item.snippet || '')).toLowerCase();
+        const usedIngredients = ingredientNames.filter(ing => text.includes(ing));
+        const coverage = Math.round((usedIngredients.length / Math.max(ingredientNames.length, 1)) * 100);
+        const thumbnail = item.pagemap?.cse_thumbnail?.[0]?.src || item.pagemap?.cse_image?.[0]?.src || '';
         return {
-          id: info.id,
-          title: info.title,
-          image: info.image || '',
-          sourceUrl: info.sourceUrl || '',
-          sourceName: info.sourceName || '',
-          usedIngredientCount: raw.usedIngredientCount || 0,
-          missedIngredientCount: raw.missedIngredientCount || 0,
+          id: item.cacheId || `g-${idx}`,
+          title: item.title.replace(/\s*[-|].*$/, '').trim(),
+          image: thumbnail,
+          sourceUrl: item.link,
+          sourceName: item.displayLink,
+          usedIngredientCount: usedIngredients.length,
+          missedIngredientCount: ingredientNames.length - usedIngredients.length,
           coverage,
-          nutrition: {
-            calories: Math.round(nutrients['Calories'] || 0),
-            protein: Math.round(nutrients['Protein'] || 0),
-            fat: Math.round(nutrients['Fat'] || 0),
-            fiber: Math.round(nutrients['Fiber'] || 0),
-            carbs: Math.round(carbs),
-            gl: Math.round(carbs * 0.5),
-          },
+          nutrition: null as null, // not available from Italian sites
         };
       });
 
-      // Sort by ingredient weight coverage descending
+      // Keep only results mentioning at least 1 ingredient; sort by coverage
+      results = results.filter(r => r.usedIngredientCount >= 1);
       results.sort((a, b) => b.coverage - a.coverage);
 
-      // Filter by site if a specific source is selected
-      const SITE_KEYWORDS: Record<string, string> = {
-        giallozafferano: "giallozafferano",
-        cucchiaio: "cucchiaio",
-        lacucinaitaliana: "lacucinaitaliana",
-      };
-      if (source !== "all" && SITE_KEYWORDS[source]) {
-        const keyword = SITE_KEYWORDS[source];
-        const siteFiltered = results.filter(r => r.sourceUrl.toLowerCase().includes(keyword) || r.sourceName.toLowerCase().includes(keyword));
-        // Only apply site filter if it returns results; otherwise show all (site not in Spoonacular DB)
-        if (siteFiltered.length > 0) results = siteFiltered;
-      }
-
-      if (maxGl !== null) results = results.filter(r => r.nutrition.gl <= maxGl);
       res.json({ results, criteria: crit });
     } catch (err: any) {
       res.status(500).json({ message: `Search failed: ${err.message}` });
