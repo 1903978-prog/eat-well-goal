@@ -294,13 +294,77 @@ export async function registerRoutes(
     }
   });
 
-  // ─── Recipe Search (Google Custom Search → Italian sites) ─────────────────
+  // ─── Italian Recipe Scraper (direct, no API key needed) ───────────────────
 
-  const ITALIAN_SITES: Record<string, string> = {
-    giallozafferano: "giallozafferano.it",
-    cucchiaio: "cucchiaio.it",
-    lacucinaitaliana: "lacucinaitaliana.com",
-  };
+  async function scrapeGialloZafferano(query: string): Promise<any[]> {
+    const url = `https://www.giallozafferano.it/ricerca-ricette/${encodeURIComponent(query)}/`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RecipeBot/1.0)', 'Accept-Language': 'it-IT,it;q=0.9' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const results: any[] = [];
+    // GZ recipe cards: <article ...> with <a class="gz-title"> inside
+    const cardRx = /<article[^>]*>([\s\S]*?)<\/article>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = cardRx.exec(html)) !== null && results.length < 12) {
+      const card = m[1];
+      const href = card.match(/href="(https?:\/\/[^"]*giallozafferano[^"]+)"/i)?.[1];
+      const title = card.match(/class="gz-title"[^>]*>([^<]+)</i)?.[1]?.trim()
+                 || card.match(/<h2[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i)?.[1]?.trim();
+      const img = card.match(/data-src="(https?:\/\/[^"]+\.(?:jpg|jpeg|webp|png)[^"]*)"/i)?.[1]
+               || card.match(/src="(https?:\/\/[^"]+\.(?:jpg|jpeg|webp|png)[^"]*)"/i)?.[1];
+      if (title && href) results.push({ title: title.replace(/\s+/g, ' '), sourceUrl: href, image: img || '', sourceName: 'giallozafferano.it' });
+    }
+    return results;
+  }
+
+  async function scrapeCucchiaio(query: string): Promise<any[]> {
+    const url = `https://www.cucchiaio.it/ricerca/?q=${encodeURIComponent(query)}`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RecipeBot/1.0)', 'Accept-Language': 'it-IT,it;q=0.9' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const results: any[] = [];
+    const cardRx = /<article[^>]*>([\s\S]*?)<\/article>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = cardRx.exec(html)) !== null && results.length < 12) {
+      const card = m[1];
+      const href = card.match(/href="(https?:\/\/[^"]*cucchiaio[^"]+)"/i)?.[1];
+      const title = card.match(/<h\d[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i)?.[1]?.trim()
+                 || card.match(/title="([^"]{5,})"/i)?.[1]?.trim();
+      const img = card.match(/data-src="(https?:\/\/[^"]+\.(?:jpg|jpeg|webp|png)[^"]*)"/i)?.[1]
+               || card.match(/src="(https?:\/\/[^"]+\.(?:jpg|jpeg|webp|png)[^"]*)"/i)?.[1];
+      if (title && href && !href.includes('/ricerca/')) results.push({ title: title.replace(/\s+/g, ' '), sourceUrl: href, image: img || '', sourceName: 'cucchiaio.it' });
+    }
+    return results;
+  }
+
+  async function scrapeLaCucinaItaliana(query: string): Promise<any[]> {
+    const url = `https://www.lacucinaitaliana.com/cerca?q=${encodeURIComponent(query)}`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RecipeBot/1.0)', 'Accept-Language': 'it-IT,it;q=0.9' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const results: any[] = [];
+    const cardRx = /<article[^>]*>([\s\S]*?)<\/article>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = cardRx.exec(html)) !== null && results.length < 12) {
+      const card = m[1];
+      const href = card.match(/href="(https?:\/\/[^"]*lacucinaitaliana[^"]+)"/i)?.[1];
+      const title = card.match(/<h\d[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i)?.[1]?.trim()
+                 || card.match(/title="([^"]{5,})"/i)?.[1]?.trim();
+      const img = card.match(/data-src="(https?:\/\/[^"]+\.(?:jpg|jpeg|webp|png)[^"]*)"/i)?.[1]
+               || card.match(/src="(https?:\/\/[^"]+\.(?:jpg|jpeg|webp|png)[^"]*)"/i)?.[1];
+      if (title && href) results.push({ title: title.replace(/\s+/g, ' '), sourceUrl: href, image: img || '', sourceName: 'lacucinaitaliana.com' });
+    }
+    return results;
+  }
 
   app.get('/api/recipes/search', async (req, res) => {
     const meal = req.query.meal as string;
@@ -313,59 +377,46 @@ export async function registerRoutes(
 
     const criteria = await storage.getMealCriteria(meal);
     const crit = criteria || { calories: 500, protein: 30, fiber: 8, fat: 20, gl: 20 };
-
-    const googleApiKey = process.env.GOOGLE_SEARCH_API_KEY;
-    const googleCseId = process.env.GOOGLE_CSE_ID;
-    if (!googleApiKey || !googleCseId) {
-      return res.status(503).json({ message: "Recipe search not configured. Add GOOGLE_SEARCH_API_KEY and GOOGLE_CSE_ID to environment variables." });
-    }
+    const ingredientNames = ingredients.map(i => i.name.toLowerCase());
+    const query = ingredients.map(i => i.name).join(' ');
 
     try {
-      const ingredientNames = ingredients.map(i => i.name.toLowerCase());
-      const ingredientQuery = ingredients.map(i => i.name).join(' ');
+      let raw: any[] = [];
 
-      // Build query with site filter
-      let siteFilter = '';
-      if (source !== "all" && ITALIAN_SITES[source]) {
-        siteFilter = `site:${ITALIAN_SITES[source]} `;
+      if (source === "giallozafferano") {
+        raw = await scrapeGialloZafferano(query);
+      } else if (source === "cucchiaio") {
+        raw = await scrapeCucchiaio(query);
+      } else if (source === "lacucinaitaliana") {
+        raw = await scrapeLaCucinaItaliana(query);
       } else {
-        siteFilter = `(site:giallozafferano.it OR site:cucchiaio.it OR site:lacucinaitaliana.com) `;
+        // All sites: scrape all 3 in parallel
+        const [gz, cc, lci] = await Promise.allSettled([
+          scrapeGialloZafferano(query),
+          scrapeCucchiaio(query),
+          scrapeLaCucinaItaliana(query),
+        ]);
+        raw = [
+          ...(gz.status === 'fulfilled' ? gz.value : []),
+          ...(cc.status === 'fulfilled' ? cc.value : []),
+          ...(lci.status === 'fulfilled' ? lci.value : []),
+        ];
       }
-      const query = `${siteFilter}ricetta ${ingredientQuery}`;
 
-      const googleUrl = `https://www.googleapis.com/customsearch/v1?key=${googleApiKey}&cx=${googleCseId}&q=${encodeURIComponent(query)}&num=10`;
-      const gRes = await fetch(googleUrl);
-      if (!gRes.ok) {
-        const err = await gRes.text();
-        return res.status(502).json({ message: `Google search error (${gRes.status}): ${err}` });
-      }
-      const gData: any = await gRes.json();
-      const items: any[] = gData.items || [];
-
-      // Score by how many user ingredients appear in title + snippet
-      let results = items.map((item: any, idx: number) => {
-        const text = (item.title + ' ' + (item.snippet || '')).toLowerCase();
-        const usedIngredients = ingredientNames.filter(ing => text.includes(ing));
-        const coverage = Math.round((usedIngredients.length / Math.max(ingredientNames.length, 1)) * 100);
-        const thumbnail = item.pagemap?.cse_thumbnail?.[0]?.src || item.pagemap?.cse_image?.[0]?.src || '';
-        return {
-          id: item.cacheId || `g-${idx}`,
-          title: item.title.replace(/\s*[-|].*$/, '').trim(),
-          image: thumbnail,
-          sourceUrl: item.link,
-          sourceName: item.displayLink,
-          usedIngredientCount: usedIngredients.length,
-          missedIngredientCount: ingredientNames.length - usedIngredients.length,
-          coverage,
-          nutrition: null as null, // not available from Italian sites
-        };
+      // Score each recipe by ingredient coverage in title
+      let results = raw.map((r, idx) => {
+        const text = r.title.toLowerCase();
+        const used = ingredientNames.filter(ing => text.includes(ing));
+        const coverage = Math.round((used.length / Math.max(ingredientNames.length, 1)) * 100);
+        return { id: `s-${idx}`, ...r, usedIngredientCount: used.length, missedIngredientCount: ingredientNames.length - used.length, coverage, nutrition: null as null };
       });
 
-      // Keep only results mentioning at least 1 ingredient; sort by coverage
+      // Keep only those mentioning at least 1 ingredient, sort by coverage
       results = results.filter(r => r.usedIngredientCount >= 1);
+      if (!results.length) results = raw.slice(0, 8).map((r, idx) => ({ id: `s-${idx}`, ...r, usedIngredientCount: 0, missedIngredientCount: ingredientNames.length, coverage: 0, nutrition: null as null }));
       results.sort((a, b) => b.coverage - a.coverage);
 
-      res.json({ results, criteria: crit });
+      res.json({ results: results.slice(0, 10), criteria: crit });
     } catch (err: any) {
       res.status(500).json({ message: `Search failed: ${err.message}` });
     }
