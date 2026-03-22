@@ -339,6 +339,14 @@ export async function registerRoutes(
         const nutrients: Record<string, number> = {};
         (info.nutrition?.nutrients || []).forEach((n: any) => { nutrients[n.name] = n.amount; });
         const carbs = nutrients['Carbohydrates'] || 0;
+
+        // Calculate ingredient weight coverage %
+        const metricGrams = (ing: any) => ing.measures?.metric?.amount ?? ing.amount ?? 0;
+        const usedWeight = (raw.usedIngredients || []).reduce((s: number, i: any) => s + metricGrams(i), 0);
+        const missedWeight = (raw.missedIngredients || []).reduce((s: number, i: any) => s + metricGrams(i), 0);
+        const totalWeight = usedWeight + missedWeight;
+        const coverage = totalWeight > 0 ? Math.round((usedWeight / totalWeight) * 100) : 0;
+
         return {
           id: info.id,
           title: info.title,
@@ -347,6 +355,7 @@ export async function registerRoutes(
           sourceName: info.sourceName || '',
           usedIngredientCount: raw.usedIngredientCount || 0,
           missedIngredientCount: raw.missedIngredientCount || 0,
+          coverage,
           nutrition: {
             calories: Math.round(nutrients['Calories'] || 0),
             protein: Math.round(nutrients['Protein'] || 0),
@@ -357,6 +366,9 @@ export async function registerRoutes(
           },
         };
       });
+
+      // Sort by ingredient weight coverage descending
+      results.sort((a, b) => b.coverage - a.coverage);
 
       // Filter by site if a specific source is selected
       const SITE_KEYWORDS: Record<string, string> = {

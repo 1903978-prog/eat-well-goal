@@ -24,7 +24,7 @@ const SOURCES = [
 interface Ingredient { id: number; meal: string; name: string; }
 interface Criteria { meal: string; calories: number; protein: number; fiber: number; fat: number; gl: number; }
 interface RecipeNutrition { calories: number; protein: number; fat: number; fiber: number; carbs: number; gl: number; }
-interface Recipe { id: number; title: string; image: string; sourceUrl: string; sourceName: string; usedIngredientCount: number; missedIngredientCount: number; nutrition: RecipeNutrition; }
+interface Recipe { id: number; title: string; image: string; sourceUrl: string; sourceName: string; usedIngredientCount: number; missedIngredientCount: number; coverage: number; nutrition: RecipeNutrition; }
 
 export default function Menus() {
   const [activeMeal, setActiveMeal] = useState<Meal>("breakfast");
@@ -311,21 +311,25 @@ export default function Menus() {
                     )}
                     <div className="flex-1 p-3 space-y-2">
                       <div className="flex items-start justify-between gap-2">
-                        <div>
+                        <div className="flex-1 min-w-0">
                           <a href={recipe.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold hover:text-primary flex items-start gap-1">
                             {recipe.title} <ExternalLink className="h-3 w-3 mt-0.5 flex-shrink-0 opacity-60" />
                           </a>
                           <p className="text-[10px] text-muted-foreground mt-0.5">
-                            {recipe.usedIngredientCount} of your ingredients used
-                            {recipe.missedIngredientCount > 0 && ` · ${recipe.missedIngredientCount} extra needed`}
-                            {recipe.sourceName && <span className="ml-1 text-muted-foreground/60">· {recipe.sourceName}</span>}
+                            {recipe.usedIngredientCount} of your ingredients · {recipe.missedIngredientCount} extra needed
+                            {recipe.sourceName && <span className="ml-1 opacity-60">· {recipe.sourceName}</span>}
                           </p>
                         </div>
-                        {score !== null && (
-                          <Badge variant={score >= 4 ? "default" : score >= 2 ? "secondary" : "outline"} className={cn("text-[10px] flex-shrink-0", score >= 4 ? "bg-green-100 text-green-800 border-green-200 hover:bg-green-100" : score >= 2 ? "bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100" : "")}>
-                            {score}/5 match
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <Badge className={cn("text-[11px] font-bold px-2", recipe.coverage >= 70 ? "bg-green-100 text-green-800 border-green-200 hover:bg-green-100" : recipe.coverage >= 40 ? "bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100" : "bg-red-50 text-red-700 border-red-200 hover:bg-red-50")}>
+                            {recipe.coverage}% your ingredients
                           </Badge>
-                        )}
+                          {score !== null && (
+                            <Badge variant="outline" className={cn("text-[10px]", score >= 4 ? "text-green-700 border-green-300" : score >= 2 ? "text-amber-700 border-amber-300" : "text-muted-foreground")}>
+                              {score}/5 nutrition
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                       <div className="grid grid-cols-5 gap-1 text-center">
                         {[
