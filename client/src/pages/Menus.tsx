@@ -22,7 +22,7 @@ const SOURCES = [
 
 interface Ingredient { id: number; meal: string; name: string; }
 interface Criteria { meal: string; calories: number; protein: number; fiber: number; fat: number; gl: number; }
-interface RecipeNutrition { calories: number; protein: number; fat: number; fiber: number; carbs: number; gl: number; }
+interface RecipeNutrition { calories: number; protein: number; fat: number; fiber: number; carbs: number; gl: number; hero13?: number; }
 interface Recipe { id: number | string; title: string; image: string; sourceUrl: string; sourceName: string; usedIngredientCount: number; missedIngredientCount: number; coverage: number; nutrition: RecipeNutrition | null; }
 
 export default function Menus() {
@@ -331,26 +331,28 @@ export default function Menus() {
                         </div>
                       </div>
                       {recipe.nutrition ? (
-                        <div className="grid grid-cols-5 gap-1 text-center">
-                          {[
-                            { label: 'Cal', actual: recipe.nutrition.calories, target: recipeCriteria?.calories },
-                            { label: 'Pro', actual: recipe.nutrition.protein, target: recipeCriteria?.protein, suffix: 'g' },
-                            { label: 'Fib', actual: recipe.nutrition.fiber, target: recipeCriteria?.fiber, suffix: 'g' },
-                            { label: 'Fat', actual: recipe.nutrition.fat, target: recipeCriteria?.fat, suffix: 'g' },
-                            { label: 'GL', actual: recipe.nutrition.gl, target: recipeCriteria?.gl },
-                          ].map(({ label, actual, target, suffix = '' }) => (
-                            <div key={label} className="bg-slate-50 rounded-md p-1.5">
-                              <div className="text-[9px] font-medium text-muted-foreground uppercase">{label}</div>
-                              <div className={cn("text-xs font-bold font-mono", target ? nutrientColor(actual, target) : "")}>
-                                {actual}{suffix}
+                        <>
+                          <div className="grid grid-cols-6 gap-1 text-center">
+                            {[
+                              { label: 'Cal', actual: recipe.nutrition.calories, target: recipeCriteria?.calories },
+                              { label: 'Pro', actual: recipe.nutrition.protein, target: recipeCriteria?.protein, suffix: 'g' },
+                              { label: 'Fib', actual: recipe.nutrition.fiber, target: recipeCriteria?.fiber, suffix: 'g' },
+                              { label: 'Fat', actual: recipe.nutrition.fat, target: recipeCriteria?.fat, suffix: 'g' },
+                              { label: 'GL', actual: recipe.nutrition.gl, target: recipeCriteria?.gl },
+                              { label: 'H13', actual: recipe.nutrition.hero13 ?? 0, target: undefined },
+                            ].map(({ label, actual, target, suffix = '' }) => (
+                              <div key={label} className="bg-slate-50 rounded-md p-1.5">
+                                <div className="text-[9px] font-medium text-muted-foreground uppercase">{label}</div>
+                                <div className={cn("text-xs font-bold font-mono", target ? nutrientColor(actual, target) : label === 'H13' ? (actual >= 60 ? "text-green-600" : actual >= 35 ? "text-amber-500" : "text-red-500") : "")}>
+                                  {actual}{suffix}
+                                </div>
+                                {target && <div className="text-[8px] text-muted-foreground/70">tgt:{target}</div>}
                               </div>
-                              {target && <div className="text-[8px] text-muted-foreground/70">tgt:{target}</div>}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-[10px] text-muted-foreground italic">Click the recipe link to see full details on the Italian site.</p>
-                      )}
+                            ))}
+                          </div>
+                          <p className="text-[9px] text-muted-foreground/60 italic text-right">estimated values</p>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                 </Card>

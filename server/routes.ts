@@ -294,6 +294,36 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Nutrition estimator for Italian recipes (keyword-based) ─────────────
+
+  function estimateNutrition(title: string): { calories: number; protein: number; fiber: number; fat: number; carbs: number; gl: number; hero13: number } {
+    const t = title.toLowerCase();
+    const isPasta    = /\b(pasta|linguine|spaghetti|rigatoni|penne|tagliatelle|fettuccine|fusilli|farfalle|orecchiette|gnocchi|lasagne?|ravioli|tortellini|carbonara|amatriciana|cacio|pesto|bolognese|ragù|ragu)\b/.test(t);
+    const isRisotto  = /\brisotto\b/.test(t);
+    const isPizza    = /\bpizza\b/.test(t);
+    const isSeafood  = /\b(gamberi|gamberetto|scampi|aragosta|astice|polpo|calamari|seppi|tonno|salmone|pesce|branzino|orata|merluzzo|baccal|acciughe|cozze|vongole|crostacei)\b/.test(t);
+    const isMeat     = /\b(pollo|manzo|maiale|agnello|vitello|tacchino|salsiccia|cotoletta|bistecca|arrosto|ossobuco|braciole|spezzatino|scaloppine)\b/.test(t);
+    const isSoup     = /\b(zuppa|minestra|minestrone|brodo|vellutata)\b/.test(t);
+    const isSalad    = /\b(insalata|carpaccio)\b/.test(t);
+    const isDessert  = /\b(dolce|torta|tiramisù|tiramisu|panna cotta|cannoli|gelato|crostata)\b/.test(t);
+    const weight = isPasta || isRisotto ? 320 : isSoup ? 380 : isPizza ? 260 : isSalad ? 220 : 260;
+    let n: { calories: number; protein: number; fiber: number; fat: number; carbs: number; gl: number };
+    if      (isPasta && isSeafood)  n = { calories: 380, protein: 22, fiber: 3, fat: 8,  carbs: 48, gl: 23 };
+    else if (isPasta && isMeat)     n = { calories: 460, protein: 25, fiber: 3, fat: 15, carbs: 52, gl: 25 };
+    else if (isPasta)               n = { calories: 370, protein: 13, fiber: 4, fat: 9,  carbs: 56, gl: 27 };
+    else if (isRisotto && isSeafood)n = { calories: 400, protein: 20, fiber: 2, fat: 10, carbs: 56, gl: 28 };
+    else if (isRisotto)             n = { calories: 420, protein: 12, fiber: 2, fat: 13, carbs: 60, gl: 30 };
+    else if (isPizza)               n = { calories: 510, protein: 18, fiber: 3, fat: 16, carbs: 66, gl: 34 };
+    else if (isSeafood)             n = { calories: 270, protein: 30, fiber: 2, fat: 11, carbs: 8,  gl: 4  };
+    else if (isMeat)                n = { calories: 390, protein: 36, fiber: 2, fat: 23, carbs: 5,  gl: 2  };
+    else if (isSoup)                n = { calories: 200, protein: 12, fiber: 5, fat: 6,  carbs: 24, gl: 10 };
+    else if (isSalad)               n = { calories: 190, protein: 10, fiber: 4, fat: 12, carbs: 14, gl: 5  };
+    else if (isDessert)             n = { calories: 420, protein: 7,  fiber: 2, fat: 19, carbs: 58, gl: 32 };
+    else                            n = { calories: 360, protein: 16, fiber: 3, fat: 11, carbs: 40, gl: 20 };
+    const hero13 = calculateHero13(n.protein, n.fiber, n.fat, n.calories, n.gl, weight);
+    return { ...n, hero13 };
+  }
+
   // ─── Italian Recipe Scraper (direct, no API key needed) ───────────────────
 
   async function scrapeGialloZafferano(query: string): Promise<any[]> {
@@ -425,10 +455,14 @@ export async function registerRoutes(
       // Score by ingredient coverage (check both English and Italian terms in title)
       let results = raw.map((r, idx) => {
         const text = r.title.toLowerCase();
-        const used = allMatchTerms.filter(t => text.includes(t));
-        const uniqueUsed = ingredientNames.filter(n => text.includes(n) || text.includes(EN_IT[n] || ''));
+        // Fix: only check Italian translation when it exists (avoids empty-string always-match bug)
+        const uniqueUsed = ingredientNames.filter(n => {
+          const it = EN_IT[n];
+          return text.includes(n) || (it ? text.includes(it) : false);
+        });
         const coverage = Math.round((uniqueUsed.length / Math.max(ingredientNames.length, 1)) * 100);
-        return { id: `s-${idx}`, ...r, usedIngredientCount: uniqueUsed.length, missedIngredientCount: ingredientNames.length - uniqueUsed.length, coverage, nutrition: null as null };
+        const nutrition = estimateNutrition(r.title);
+        return { id: `s-${idx}`, ...r, usedIngredientCount: uniqueUsed.length, missedIngredientCount: ingredientNames.length - uniqueUsed.length, coverage, nutrition };
       });
 
       // Show all results (titles are in Italian so English ingredient match may be 0), sort by coverage
