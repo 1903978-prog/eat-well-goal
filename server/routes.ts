@@ -298,6 +298,8 @@ export async function registerRoutes(
 
   app.get('/api/recipes/search', async (req, res) => {
     const meal = req.query.meal as string;
+    const source = (req.query.source as string) || "all";
+    const maxGl = req.query.maxGl ? Number(req.query.maxGl) : null;
     if (!meal) return res.status(400).json({ message: "Meal required" });
 
     const ingredients = await storage.getMenuIngredients(meal);
@@ -311,26 +313,73 @@ export async function registerRoutes(
       return res.status(503).json({ message: "Recipe search is not configured. Please add SPOONACULAR_API_KEY to environment variables." });
     }
 
+    // Site name to add to query when source is selected
+    const SITE_LABELS: Record<string, string> = {
+      giallozafferano: "giallozafferano",
+      cucchiaio: "cucchiaio d'argento",
+      lacucinaitaliana: "la cucina italiana",
+    };
+
     try {
       const ingredientList = ingredients.map(i => i.name).join(',');
-      const searchUrl = `https://api.spoonacular.com/recipes/findByIngredients?apiKey=${apiKey}&ingredients=${encodeURIComponent(ingredientList)}&number=10&ranking=1&ignorePantry=true`;
+      let rawRecipes: any[] = [];
+
+      if (source !== "all" && SITE_LABELS[source]) {
+        // Use complexSearch with site name in query for source-specific search
+        const siteQuery = SITE_LABELS[source] + " italian " + ingredients.map(i => i.name).join(' ');
+        const complexUrl = `https://api.spoonacular.com/recipes/complexSearch?apiKey=${apiKey}&query=${encodeURIComponent(siteQuery)}&includeIngredients=${encodeURIComponent(ingredientList)}&cuisine=italian&number=12&addRecipeInformation=true&addRecipeNutrition=true`;
+        const complexRes = await fetch(complexUrl);
+        if (!complexRes.ok) {
+          const err = await complexRes.text();
+          return res.status(502).json({ message: `Spoonacular error (${complexRes.status}): ${err}` });
+        }
+        const complexData: any = await complexRes.json();
+        const items: any[] = complexData.results || [];
+        if (!items.length) return res.json({ results: [], criteria: crit });
+
+        let results = items.map((info: any) => {
+          const nutrients: Record<string, number> = {};
+          (info.nutrition?.nutrients || []).forEach((n: any) => { nutrients[n.name] = n.amount; });
+          const carbs = nutrients['Carbohydrates'] || 0;
+          return {
+            id: info.id,
+            title: info.title,
+            image: info.image || '',
+            sourceUrl: info.sourceUrl || '',
+            sourceName: info.sourceName || '',
+            usedIngredientCount: (info.usedIngredients || []).length,
+            missedIngredientCount: (info.missedIngredients || []).length,
+            nutrition: {
+              calories: Math.round(nutrients['Calories'] || 0),
+              protein: Math.round(nutrients['Protein'] || 0),
+              fat: Math.round(nutrients['Fat'] || 0),
+              fiber: Math.round(nutrients['Fiber'] || 0),
+              carbs: Math.round(carbs),
+              gl: Math.round(carbs * 0.5),
+            },
+          };
+        });
+        if (maxGl !== null) results = results.filter(r => r.nutrition.gl <= maxGl);
+        return res.json({ results, criteria: crit });
+      }
+
+      // Default: findByIngredients + bulk info
+      const searchUrl = `https://api.spoonacular.com/recipes/findByIngredients?apiKey=${apiKey}&ingredients=${encodeURIComponent(ingredientList)}&number=12&ranking=1&ignorePantry=true`;
       const searchRes = await fetch(searchUrl);
       if (!searchRes.ok) {
         const err = await searchRes.text();
         return res.status(502).json({ message: `Spoonacular error (${searchRes.status}): ${err}` });
       }
-
-      const rawRecipes: any[] = await searchRes.json();
+      rawRecipes = await searchRes.json();
       if (!rawRecipes.length) return res.json({ results: [], criteria: crit });
 
-      // Fetch nutrition for top results
-      const recipeIds = rawRecipes.slice(0, 6).map((r: any) => r.id).join(',');
+      const recipeIds = rawRecipes.slice(0, 8).map((r: any) => r.id).join(',');
       const infoUrl = `https://api.spoonacular.com/recipes/informationBulk?apiKey=${apiKey}&ids=${recipeIds}&includeNutrition=true`;
       const infoRes = await fetch(infoUrl);
       if (!infoRes.ok) return res.json({ results: [], criteria: crit });
 
       const infoList: any[] = await infoRes.json();
-      const results = infoList.map((info: any) => {
+      let results = infoList.map((info: any) => {
         const raw = rawRecipes.find((r: any) => r.id === info.id) || {};
         const nutrients: Record<string, number> = {};
         (info.nutrition?.nutrients || []).forEach((n: any) => { nutrients[n.name] = n.amount; });
@@ -340,6 +389,7 @@ export async function registerRoutes(
           title: info.title,
           image: info.image || '',
           sourceUrl: info.sourceUrl || '',
+          sourceName: info.sourceName || '',
           usedIngredientCount: raw.usedIngredientCount || 0,
           missedIngredientCount: raw.missedIngredientCount || 0,
           nutrition: {
@@ -352,7 +402,7 @@ export async function registerRoutes(
           },
         };
       });
-
+      if (maxGl !== null) results = results.filter(r => r.nutrition.gl <= maxGl);
       res.json({ results, criteria: crit });
     } catch (err: any) {
       res.status(500).json({ message: `Search failed: ${err.message}` });

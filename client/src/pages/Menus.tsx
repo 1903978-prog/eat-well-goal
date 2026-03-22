@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, Plus, X, ChevronDown, ChevronUp, Search, ExternalLink, Settings2, Loader2, UtensilsCrossed, ChefHat } from "lucide-react";
+import { ArrowLeft, Plus, X, ChevronDown, ChevronUp, Search, ExternalLink, Settings2, Loader2, UtensilsCrossed, ChefHat, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,10 +14,17 @@ type Meal = "breakfast" | "lunch" | "dinner";
 const MEALS: Meal[] = ["breakfast", "lunch", "dinner"];
 const MEAL_LABELS: Record<Meal, string> = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner" };
 
+const SOURCES = [
+  { value: "all", label: "All Italian sites" },
+  { value: "giallozafferano", label: "Giallo Zafferano" },
+  { value: "cucchiaio", label: "Cucchiaio d'Argento" },
+  { value: "lacucinaitaliana", label: "La Cucina Italiana" },
+];
+
 interface Ingredient { id: number; meal: string; name: string; }
 interface Criteria { meal: string; calories: number; protein: number; fiber: number; fat: number; gl: number; }
 interface RecipeNutrition { calories: number; protein: number; fat: number; fiber: number; carbs: number; gl: number; }
-interface Recipe { id: number; title: string; image: string; sourceUrl: string; usedIngredientCount: number; missedIngredientCount: number; nutrition: RecipeNutrition; }
+interface Recipe { id: number; title: string; image: string; sourceUrl: string; sourceName: string; usedIngredientCount: number; missedIngredientCount: number; nutrition: RecipeNutrition; }
 
 export default function Menus() {
   const [activeMeal, setActiveMeal] = useState<Meal>("breakfast");
@@ -28,6 +35,8 @@ export default function Menus() {
   const [recipeCriteria, setRecipeCriteria] = useState<Criteria | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [source, setSource] = useState("all");
+  const [maxGl, setMaxGl] = useState("");
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -104,7 +113,10 @@ export default function Menus() {
     setRecipes([]);
     setRecipeCriteria(null);
     try {
-      const r = await fetch(`/api/recipes/search?meal=${activeMeal}`, { credentials: "include" });
+      const params = new URLSearchParams({ meal: activeMeal });
+      if (source !== "all") params.set("source", source);
+      if (maxGl.trim()) params.set("maxGl", maxGl.trim());
+      const r = await fetch(`/api/recipes/search?${params}`, { credentials: "include" });
       const data = await r.json();
       if (!r.ok) { setSearchError(data.message || "Search failed"); return; }
       setRecipes(data.results);
@@ -239,6 +251,37 @@ export default function Menus() {
               )}
             </Card>
 
+            {/* Search Options */}
+            <Card>
+              <CardContent className="pt-3 pb-3 space-y-3">
+                {/* Source dropdown */}
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1 mb-1">
+                    <Globe className="h-3 w-3" /> Recipe Source
+                  </label>
+                  <select
+                    value={source}
+                    onChange={e => setSource(e.target.value)}
+                    className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    {SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </div>
+                {/* Max GL */}
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">Max GL filter</label>
+                  <Input
+                    type="number"
+                    placeholder="e.g. 20 (no limit if empty)"
+                    value={maxGl}
+                    onChange={e => setMaxGl(e.target.value)}
+                    className="h-8 text-sm"
+                    min={0}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Search Button */}
             <Button className="w-full" onClick={handleSearch} disabled={searching || ingredients.length === 0}>
               {searching ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Searching Italian recipes...</> : <><Search className="h-4 w-4 mr-2" />Find Italian Recipes</>}
@@ -275,6 +318,7 @@ export default function Menus() {
                           <p className="text-[10px] text-muted-foreground mt-0.5">
                             {recipe.usedIngredientCount} of your ingredients used
                             {recipe.missedIngredientCount > 0 && ` · ${recipe.missedIngredientCount} extra needed`}
+                            {recipe.sourceName && <span className="ml-1 text-muted-foreground/60">· {recipe.sourceName}</span>}
                           </p>
                         </div>
                         {score !== null && (
