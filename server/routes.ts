@@ -313,11 +313,11 @@ export async function registerRoutes(
 
     try {
       const ingredientList = ingredients.map(i => i.name).join(',');
-      const searchUrl = `https://api.spoonacular.com/recipes/findByIngredients?apiKey=${apiKey}&ingredients=${encodeURIComponent(ingredientList)}&number=10&ranking=1&ignorePantry=true&cuisine=italian`;
+      const searchUrl = `https://api.spoonacular.com/recipes/findByIngredients?apiKey=${apiKey}&ingredients=${encodeURIComponent(ingredientList)}&number=10&ranking=1&ignorePantry=true`;
       const searchRes = await fetch(searchUrl);
       if (!searchRes.ok) {
         const err = await searchRes.text();
-        return res.status(502).json({ message: `Spoonacular error: ${err}` });
+        return res.status(502).json({ message: `Spoonacular error (${searchRes.status}): ${err}` });
       }
 
       const rawRecipes: any[] = await searchRes.json();
