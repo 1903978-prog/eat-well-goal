@@ -350,51 +350,49 @@ export async function registerRoutes(
     return results;
   }
 
-  async function scrapeCucchiaio(query: string): Promise<any[]> {
-    const url = `https://www.cucchiaio.it/ricerca/?q=${encodeURIComponent(query)}`;
+  // DuckDuckGo site-search: works for JS-rendered sites (cucchiaio, lacucinaitaliana)
+  // that don't expose server-side HTML for their search pages
+  async function scrapeViaDDG(site: string, query: string, sourceName: string): Promise<any[]> {
+    const q = `site:${site} ${query} ricetta`;
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RecipeBot/1.0)', 'Accept-Language': 'it-IT,it;q=0.9' },
-      signal: AbortSignal.timeout(8000),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.5',
+      },
+      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return [];
     const html = await res.text();
     const results: any[] = [];
-    const cardRx = /<article[^>]*>([\s\S]*?)<\/article>/gi;
+    // DDG HTML: <a class="result__a" href="https://actual-url">Title</a>
+    const linkRx = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
     let m: RegExpExecArray | null;
-    while ((m = cardRx.exec(html)) !== null && results.length < 12) {
-      const card = m[1];
-      const href = card.match(/href="(https?:\/\/[^"]*cucchiaio[^"]+)"/i)?.[1];
-      const title = card.match(/<h\d[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i)?.[1]?.trim()
-                 || card.match(/title="([^"]{5,})"/i)?.[1]?.trim();
-      const img = card.match(/data-src="(https?:\/\/[^"]+\.(?:jpg|jpeg|webp|png)[^"]*)"/i)?.[1]
-               || card.match(/src="(https?:\/\/[^"]+\.(?:jpg|jpeg|webp|png)[^"]*)"/i)?.[1];
-      if (title && href && !href.includes('/ricerca/')) results.push({ title: title.replace(/\s+/g, ' '), sourceUrl: href, image: img || '', sourceName: 'cucchiaio.it' });
+    while ((m = linkRx.exec(html)) !== null && results.length < 12) {
+      const rawHref = m[1];
+      // DDG sometimes wraps in //duckduckgo.com/l/?uddg=... — decode it
+      let href = rawHref;
+      const uddg = rawHref.match(/[?&]uddg=([^&]+)/i)?.[1];
+      if (uddg) href = decodeURIComponent(uddg);
+      const rawTitle = m[2].replace(/<[^>]+>/g, '').trim();
+      // strip site name suffix (e.g. "Linguine ai gamberi - Cucchiaio d'Argento")
+      const title = rawTitle.split(/\s*[-–|]\s*(?:cucchiaio|la cucina italiana|ricette)/i)[0].trim();
+      if (title && href && href.includes(site) && !href.match(/\/(ricerca|search|tag|categoria|category)\//)) {
+        results.push({ title: title.replace(/\s+/g, ' '), sourceUrl: href, image: '', sourceName });
+      }
     }
     return results;
   }
 
-  async function scrapeLaCucinaItaliana(query: string): Promise<any[]> {
-    const url = `https://www.lacucinaitaliana.com/cerca?q=${encodeURIComponent(query)}`;
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RecipeBot/1.0)', 'Accept-Language': 'it-IT,it;q=0.9' },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return [];
-    const html = await res.text();
-    const results: any[] = [];
-    const cardRx = /<article[^>]*>([\s\S]*?)<\/article>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = cardRx.exec(html)) !== null && results.length < 12) {
-      const card = m[1];
-      const href = card.match(/href="(https?:\/\/[^"]*lacucinaitaliana[^"]+)"/i)?.[1];
-      const title = card.match(/<h\d[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i)?.[1]?.trim()
-                 || card.match(/title="([^"]{5,})"/i)?.[1]?.trim();
-      const img = card.match(/data-src="(https?:\/\/[^"]+\.(?:jpg|jpeg|webp|png)[^"]*)"/i)?.[1]
-               || card.match(/src="(https?:\/\/[^"]+\.(?:jpg|jpeg|webp|png)[^"]*)"/i)?.[1];
-      if (title && href) results.push({ title: title.replace(/\s+/g, ' '), sourceUrl: href, image: img || '', sourceName: 'lacucinaitaliana.com' });
-    }
-    return results;
+  async function scrapeCucchiaio(query: string): Promise<any[]> {
+    return scrapeViaDDG('cucchiaio.it', query, 'cucchiaio.it');
   }
+
+  async function scrapeLaCucinaItaliana(query: string): Promise<any[]> {
+    return scrapeViaDDG('lacucinaitaliana.com', query, 'lacucinaitaliana.com');
+  }
+
 
   app.get('/api/recipes/search', async (req, res) => {
     const meal = req.query.meal as string;
@@ -419,7 +417,9 @@ export async function registerRoutes(
       mushroom: 'funghi', mushrooms: 'funghi', cheese: 'formaggio', butter: 'burro', cream: 'panna',
       bread: 'pane', flour: 'farina', sugar: 'zucchero', oil: 'olio', lemon: 'limone',
       apple: 'mela', pear: 'pera', strawberry: 'fragola', banana: 'banana', orange: 'arancia',
-      shrimp: 'gamberi', lamb: 'agnello', turkey: 'tacchino', ham: 'prosciutto', bacon: 'pancetta',
+      shrimp: 'gamberi', prawns: 'gamberi', lamb: 'agnello', turkey: 'tacchino', ham: 'prosciutto', bacon: 'pancetta',
+      lobster: 'aragosta', crayfish: 'aragosta', langoustine: 'scampi', squid: 'calamari', octopus: 'polpo',
+      clams: 'vongole', mussels: 'cozze', anchovies: 'acciughe', sea bass: 'branzino', sea bream: 'orata',
       pepper: 'pepe', basil: 'basilico', parsley: 'prezzemolo', rosemary: 'rosmarino',
       'greek yogurt': 'yogurt greco', yogurt: 'yogurt', quinoa: 'quinoa', lentils: 'lenticchie',
       beans: 'fagioli', chickpeas: 'ceci', eggplant: 'melanzane', celery: 'sedano',
