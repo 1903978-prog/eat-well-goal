@@ -302,7 +302,7 @@ export default function Menus() {
               </div>
             )}
             {recipes.map(recipe => {
-              const score = recipeCriteria ? matchScore(recipe.nutrition, recipeCriteria) : null;
+              const score = recipeCriteria && recipe.nutrition ? matchScore(recipe.nutrition, recipeCriteria) : null;
               return (
                 <Card key={recipe.id} className="overflow-hidden">
                   <div className="flex gap-0">
