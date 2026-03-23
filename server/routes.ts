@@ -419,7 +419,7 @@ export async function registerRoutes(
       apple: 'mela', pear: 'pera', strawberry: 'fragola', banana: 'banana', orange: 'arancia',
       shrimp: 'gamberi', prawns: 'gamberi', lamb: 'agnello', turkey: 'tacchino', ham: 'prosciutto', bacon: 'pancetta',
       lobster: 'aragosta', crayfish: 'aragosta', langoustine: 'scampi', squid: 'calamari', octopus: 'polpo',
-      clams: 'vongole', mussels: 'cozze', anchovies: 'acciughe', sea bass: 'branzino', sea bream: 'orata',
+      clams: 'vongole', mussels: 'cozze', anchovies: 'acciughe', 'sea bass': 'branzino', 'sea bream': 'orata',
       pepper: 'pepe', basil: 'basilico', parsley: 'prezzemolo', rosemary: 'rosmarino',
       'greek yogurt': 'yogurt greco', yogurt: 'yogurt', quinoa: 'quinoa', lentils: 'lenticchie',
       beans: 'fagioli', chickpeas: 'ceci', eggplant: 'melanzane', celery: 'sedano',
